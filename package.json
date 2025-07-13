@@ -1,17 +1,14 @@
 {
-  "name": "vite_react_shadcn_ts",
+  "name": "skylatech",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "homepage": "https://darktechpirate.github.io/Skyla-Tech/",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "build:dev": "vite build --mode development",
+    "build": "tsc && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
+    "setup-fixed-admin": "node scripts/setup-fixed-admin.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -49,6 +46,8 @@
     "cmdk": "^1.0.0",
     "date-fns": "^3.6.0",
     "embla-carousel-react": "^8.3.0",
+    "firebase": "^11.10.0",
+    "firebase-admin": "^11.11.1",
     "input-otp": "^1.2.4",
     "lucide-react": "^0.462.0",
     "next-themes": "^0.3.0",
@@ -78,7 +77,6 @@
     "eslint": "^9.9.0",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
     "eslint-plugin-react-refresh": "^0.4.9",
-    "gh-pages": "^6.3.0",
     "globals": "^15.9.0",
     "lovable-tagger": "^1.1.7",
     "postcss": "^8.4.47",

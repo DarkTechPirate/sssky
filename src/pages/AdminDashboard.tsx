@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Shield, LogOut, Users, BarChart3, CheckSquare, Calendar, Building, UserPlus, UserX, User } from "lucide-react";
@@ -24,6 +23,8 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { auth } from "@/firebase";
+import { createUserWithEmailAndPassword } from "firebase/auth";
 
 // Define available companies
 const COMPANIES = [
@@ -66,30 +67,13 @@ const AdminDashboard = () => {
     }
     setAdminData(JSON.parse(stored));
 
-    // Load initial employees
-    const loadEmployees = async () => {
-      try {
-        const employees = await apiService.getEmployees();
-        setEmployees(employees);
-      } catch (error) {
-        console.error('Failed to load employees:', error);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Failed to load employees. Please refresh the page."
-        });
-      }
-    };
-
-    loadEmployees();
-
-    // Start polling for updates
-    const stopPolling = apiService.startPolling((updatedEmployees) => {
+    // Real-time Firestore listener
+    const unsubscribe = apiService.onEmployeesChange((updatedEmployees) => {
       setEmployees(updatedEmployees);
-    }, 3000); // Poll every 3 seconds
+    });
 
     return () => {
-      stopPolling();
+      unsubscribe();
     };
   }, [navigate]);
 
@@ -103,7 +87,7 @@ const AdminDashboard = () => {
   };
 
   const handleAddEmployee = async () => {
-    if (!newEmployee.name || !newEmployee.employeeId || !newEmployee.companyId || !newEmployee.email || !newEmployee.password) {
+    if (!newEmployee.name || !newEmployee.companyId || !newEmployee.email || !newEmployee.password) {
       toast({
         variant: "destructive",
         title: "Missing Information",
@@ -121,26 +105,40 @@ const AdminDashboard = () => {
       return;
     }
 
-    const employeeExists = employees.some(
-      emp => emp.employeeId === newEmployee.employeeId || emp.email === newEmployee.email
-    );
-
-    if (employeeExists) {
-      toast({
-        variant: "destructive",
-        title: "Employee Already Exists",
-        description: "An employee with this ID or email already exists."
-      });
-      return;
-    }
-
-    const newEmployeeData = {
-      ...newEmployee,
-      id: Date.now().toString(),
-    };
-
     try {
-      await apiService.addEmployee(newEmployeeData);
+      // Create Firebase auth user
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        newEmployee.email,
+        newEmployee.password
+      );
+
+      // Set custom claims using Vercel endpoint
+      const response = await fetch('/api/setCustomClaims', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          uid: userCredential.user.uid,
+          role: 'employee'
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to set user role');
+      }
+
+      // Add employee to Firestore
+      const employeeData = {
+        name: newEmployee.name,
+        email: newEmployee.email,
+        companyId: newEmployee.companyId,
+        uid: userCredential.user.uid,
+        role: 'employee'
+      };
+
+      await apiService.addEmployee(employeeData);
       
       toast({
         title: "Employee Added",
@@ -151,8 +149,8 @@ const AdminDashboard = () => {
       toast({
         title: "Employee Credentials",
         description: `
-          Employee ID: ${newEmployeeData.employeeId}
-          Password: ${newEmployeeData.password}
+          Email: ${newEmployee.email}
+          Password: ${newEmployee.password}
           Please share these credentials securely with the employee.
         `,
         duration: 10000,
@@ -161,7 +159,6 @@ const AdminDashboard = () => {
       // Reset form
       setNewEmployee({
         name: "",
-        employeeId: "",
         companyId: "",
         email: "",
         password: ""
@@ -171,7 +168,7 @@ const AdminDashboard = () => {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to add employee. Please try again."
+        description: error.message || "Failed to add employee. Please try again."
       });
     }
   };

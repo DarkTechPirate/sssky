@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Shield, ArrowLeft } from "lucide-react";
@@ -7,11 +6,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { auth } from "@/firebase";
+import { signInWithEmailAndPassword } from "firebase/auth";
+
+// Fixed admin credentials
+const ADMIN_USERNAME = "admin01";
+const ADMIN_PASSWORD = "ADMIN123";
 
 const AdminLogin = () => {
   const [formData, setFormData] = useState({
-    adminName: "",
-    adminCode: ""
+    username: "",
+    password: ""
   });
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
@@ -21,42 +26,65 @@ const AdminLogin = () => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Validate form
-    if (!formData.adminName || !formData.adminCode) {
-      toast({
-        variant: "destructive",
-        title: "Missing Information",
-        description: "Please fill in all fields to continue."
-      });
-      setIsLoading(false);
-      return;
-    }
+    try {
+      // Validate form
+      if (!formData.username || !formData.password) {
+        throw new Error("Please fill in all fields to continue.");
+      }
 
-    // Simple admin validation (in real app, this would be proper authentication)
-    if (formData.adminCode !== "ADMIN123") {
-      toast({
-        variant: "destructive",
-        title: "Invalid Admin Code",
-        description: "Please enter the correct admin code."
-      });
-      setIsLoading(false);
-      return;
-    }
+      // Check fixed credentials
+      if (formData.username !== ADMIN_USERNAME || formData.password !== ADMIN_PASSWORD) {
+        throw new Error("Invalid admin credentials.");
+      }
 
-    // Simulate login process
-    setTimeout(() => {
-      // Store admin data in localStorage for demo purposes
-      localStorage.setItem('adminData', JSON.stringify(formData));
+      // Sign in with Firebase using email (username + domain)
+      const adminEmail = `${ADMIN_USERNAME}@checklist-central.com`;
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        adminEmail,
+        ADMIN_PASSWORD
+      );
+
+      // Force token refresh to get latest claims
+      await userCredential.user.getIdToken(true);
+      
+      // Get user claims to verify admin role
+      const idTokenResult = await userCredential.user.getIdTokenResult();
+      if (idTokenResult.claims.role !== 'admin') {
+        await auth.signOut();
+        throw new Error("This account is not authorized as an admin.");
+      }
+
+      // Store admin data in localStorage
+      localStorage.setItem('adminData', JSON.stringify({
+        uid: userCredential.user.uid,
+        username: ADMIN_USERNAME,
+        role: 'admin'
+      }));
+
       toast({
         title: "Admin Login Successful!",
-        description: `Welcome ${formData.adminName}! Accessing admin dashboard...`
+        description: "Welcome! Accessing admin dashboard..."
       });
       
+      // Navigate after a short delay to ensure claims are propagated
       setTimeout(() => {
         navigate('/admin-dashboard');
-      }, 1000);
+      }, 1500);
+    } catch (error) {
+      console.error('Login error:', error);
+      // Clear any existing auth state on error
+      await auth.signOut();
+      localStorage.removeItem('adminData');
+      
+      toast({
+        variant: "destructive",
+        title: "Login Failed",
+        description: error.message || "Invalid admin credentials."
+      });
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -90,30 +118,29 @@ const AdminLogin = () => {
           <CardContent className="p-6">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="adminName">Admin Name</Label>
+                <Label htmlFor="username">Admin Username</Label>
                 <Input
-                  id="adminName"
-                  name="adminName"
+                  id="username"
+                  name="username"
                   type="text"
-                  placeholder="Enter admin name"
-                  value={formData.adminName}
+                  placeholder="Enter admin username"
+                  value={formData.username}
                   onChange={handleInputChange}
                   className="transition-all focus:ring-2 focus:ring-purple-500"
                 />
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="adminCode">Admin Code</Label>
+                <Label htmlFor="password">Password</Label>
                 <Input
-                  id="adminCode"
-                  name="adminCode"
+                  id="password"
+                  name="password"
                   type="password"
-                  placeholder="Enter admin code"
-                  value={formData.adminCode}
+                  placeholder="Enter password"
+                  value={formData.password}
                   onChange={handleInputChange}
                   className="transition-all focus:ring-2 focus:ring-purple-500"
                 />
-                <p className="text-sm text-gray-500">Demo code: ADMIN123</p>
               </div>
 
               <Button 

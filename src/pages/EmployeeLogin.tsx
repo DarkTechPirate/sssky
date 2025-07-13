@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Users, ArrowLeft } from "lucide-react";
@@ -8,6 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "@/firebase";
+import { apiService } from "@/services/api";
 
 // Import company data from AdminDashboard
 const COMPANIES = [
@@ -19,7 +21,7 @@ const COMPANIES = [
 const EmployeeLogin = () => {
   const [formData, setFormData] = useState({
     companyId: "",
-    employeeId: "",
+    email: "",
     password: ""
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -30,54 +32,50 @@ const EmployeeLogin = () => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Validate form
-    if (!formData.companyId || !formData.employeeId || !formData.password) {
+    try {
+      // Validate form
+      if (!formData.companyId || !formData.email || !formData.password) {
+        throw new Error("Please fill in all fields to continue.");
+      }
+
+      // Sign in with Firebase
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        formData.email,
+        formData.password
+      );
+
+      // Get employee data
+      const employee = await apiService.getEmployeeByEmail(formData.email);
+      
+      if (!employee || employee.companyId !== formData.companyId) {
+        throw new Error("Invalid company selection.");
+      }
+
+      // Get user claims to verify role
+      const idTokenResult = await userCredential.user.getIdTokenResult();
+      if (idTokenResult.claims.role !== 'employee') {
+        throw new Error("This account is not authorized as an employee.");
+      }
+
+      toast({
+        title: "Login Successful!",
+        description: `Welcome ${employee.name}! Redirecting to your dashboard...`
+      });
+      
+      setTimeout(() => {
+        navigate('/employee-dashboard');
+      }, 1000);
+    } catch (error) {
+      console.error('Login error:', error);
       toast({
         variant: "destructive",
-        title: "Missing Information",
-        description: "Please fill in all fields to continue."
+        title: "Login Failed",
+        description: error.message || "Please check your credentials and try again."
       });
+    } finally {
       setIsLoading(false);
-      return;
     }
-
-    // Get stored credentials
-    const credentials = JSON.parse(localStorage.getItem('employeeCredentials') || '[]');
-    const employee = credentials.find(
-      (cred: any) => 
-        cred.employeeId === formData.employeeId && 
-        cred.password === formData.password &&
-        cred.companyId === formData.companyId
-    );
-
-    if (!employee) {
-      toast({
-        variant: "destructive",
-        title: "Invalid Credentials",
-        description: "Please check your Employee ID and password."
-      });
-      setIsLoading(false);
-      return;
-    }
-
-    // Login successful
-    const employeeData = {
-      ...employee,
-      company: COMPANIES.find(c => c.id === employee.companyId)?.name
-    };
-
-    // Store employee data in localStorage
-    localStorage.setItem('employeeData', JSON.stringify(employeeData));
-    
-    toast({
-      title: "Login Successful!",
-      description: `Welcome ${employee.name}! Redirecting to your dashboard...`
-    });
-    
-    setTimeout(() => {
-      navigate('/employee-dashboard');
-    }, 1000);
-    setIsLoading(false);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -130,13 +128,13 @@ const EmployeeLogin = () => {
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="employeeId">Employee ID</Label>
+                <Label htmlFor="email">Email</Label>
                 <Input
-                  id="employeeId"
-                  name="employeeId"
-                  type="text"
-                  placeholder="Enter your employee ID"
-                  value={formData.employeeId}
+                  id="email"
+                  name="email"
+                  type="email"
+                  placeholder="Enter your email"
+                  value={formData.email}
                   onChange={handleInputChange}
                   className="transition-all focus:ring-2 focus:ring-blue-500"
                 />
