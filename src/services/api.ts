@@ -9,6 +9,7 @@ import {
   updateDoc,
   query,
   where,
+  orderBy,
   DocumentData,
   serverTimestamp
 } from 'firebase/firestore';
@@ -19,6 +20,7 @@ export interface Employee {
   uid: string;
   name: string;
   email: string;
+  employeeId: string;
   companyId: string;
   role: 'employee';
   createdAt: Date;
@@ -60,18 +62,40 @@ const COLLECTIONS = {
 export const apiService = {
   // Employee Operations
   onEmployeesChange(callback: (employees: Employee[]) => void) {
-    return onSnapshot(collection(db, COLLECTIONS.EMPLOYEES), (snapshot) => {
-      const employees = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate()
-      } as Employee));
-      callback(employees);
-    });
+    try {
+      const q = query(
+        collection(db, COLLECTIONS.EMPLOYEES),
+        where("role", "==", "employee"),
+        orderBy("createdAt", "desc")
+      );
+      
+      return onSnapshot(q, (snapshot) => {
+        const employees = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate() || new Date()
+        } as Employee));
+        callback(employees);
+      }, (error) => {
+        console.error('Error in employees listener:', error);
+        // Optionally notify the user about the error
+        throw error;
+      });
+    } catch (error) {
+      console.error('Failed to setup employees listener:', error);
+      throw error;
+    }
   },
 
   async addEmployee(employee: Omit<Employee, 'id' | 'createdAt'>): Promise<string> {
     try {
+      // Check if employeeId already exists
+      const q = query(collection(db, COLLECTIONS.EMPLOYEES), where("employeeId", "==", employee.employeeId));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        throw new Error('Employee ID already exists');
+      }
+
       const docRef = await addDoc(collection(db, COLLECTIONS.EMPLOYEES), {
         ...employee,
         createdAt: serverTimestamp()

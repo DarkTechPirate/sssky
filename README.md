@@ -1,73 +1,166 @@
-# Welcome to your Lovable project
+# Checklist Central App
 
-## Project info
+A modern checklist management application built with React, Firebase, and Vercel.
 
-**URL**: https://lovable.dev/projects/04066a65-409a-4729-abaa-f30f79508a30
+## Features
 
-## How can I edit this code?
+- 🔐 Secure Authentication (Admin & Employee)
+- 👥 Role-based Access Control
+- 🏢 Multi-company Support
+- ✅ Dynamic Checklist Management
+- 📊 Real-time Progress Tracking
+- 📱 Responsive Design
 
-There are several ways of editing your application.
+## Tech Stack
 
-**Use Lovable**
+- Frontend: React + TypeScript + Vite
+- UI: TailwindCSS + Radix UI
+- Backend: Firebase + Vercel Serverless Functions
+- Database: Firestore
+- Authentication: Firebase Auth
+- Hosting: Vercel
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/04066a65-409a-4729-abaa-f30f79508a30) and start prompting.
+## Prerequisites
 
-Changes made via Lovable will be committed automatically to this repo.
+- Node.js 16.x or later
+- npm 7.x or later
+- Firebase account
+- Vercel account
 
-**Use your preferred IDE**
+## Setup Instructions
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd checklist-central-app
+   ```
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-Follow these steps:
+3. **Firebase Setup**
+   
+   a. Create a new Firebase project at [Firebase Console](https://console.firebase.google.com)
+   
+   b. Enable Authentication and Firestore
+   
+   c. Generate a new Service Account Key:
+      - Go to Project Settings > Service Accounts
+      - Click "Generate New Private Key"
+      - Save the JSON file securely
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+4. **Environment Variables**
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+   Create a `.env` file in the root directory:
+   ```env
+   VITE_FIREBASE_API_KEY=your_api_key
+   VITE_FIREBASE_AUTH_DOMAIN=your_auth_domain
+   VITE_FIREBASE_PROJECT_ID=your_project_id
+   VITE_FIREBASE_STORAGE_BUCKET=your_storage_bucket
+   VITE_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
+   VITE_FIREBASE_APP_ID=your_app_id
+   ```
 
-# Step 3: Install the necessary dependencies.
-npm i
+5. **Vercel Setup**
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+   a. Install Vercel CLI:
+   ```bash
+   npm i -g vercel
+   ```
+
+   b. Link your project:
+   ```bash
+   vercel link
+   ```
+
+   c. Add Firebase service account as a secret:
+   ```bash
+   vercel env add FIREBASE_SERVICE_ACCOUNT_KEY
+   # Paste the entire service account JSON when prompted
+   ```
+
+6. **Development**
+   ```bash
+   npm run dev
+   ```
+
+7. **Production Build**
+   ```bash
+   npm run build
+   ```
+
+8. **Deploy**
+   ```bash
+   vercel --prod
+   ```
+
+## Initial Admin Setup
+
+After deployment, create the initial admin account:
+
+```bash
+curl -X POST https://your-vercel-url/api/createAdmin \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@example.com","password":"your-secure-password"}'
 ```
 
-**Edit a file directly in GitHub**
+## Firestore Security Rules
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+Copy these rules to your Firebase Console:
 
-**Use GitHub Codespaces**
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null && request.auth.token.role == 'admin';
+    }
+    
+    function isEmployee() {
+      return request.auth != null && request.auth.token.role == 'employee';
+    }
+    
+    match /employees/{employeeId} {
+      allow read: if isAdmin() || (isEmployee() && request.auth.uid == resource.data.uid);
+      allow write: if isAdmin();
+    }
+    
+    match /checklists/{checklistId} {
+      allow read: if isAdmin() || (isEmployee() && resource.data.assignedTo == request.auth.uid);
+      allow write: if isAdmin() || (isEmployee() && resource.data.assignedTo == request.auth.uid);
+    }
+    
+    match /companies/{companyId} {
+      allow read: if isAdmin() || isEmployee();
+      allow write: if isAdmin();
+    }
+  }
+}
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Usage
 
-## What technologies are used for this project?
+1. **Admin Portal**
+   - Create and manage companies
+   - Add and manage employees
+   - Create and assign checklists
+   - Monitor progress
 
-This project is built with:
+2. **Employee Portal**
+   - View assigned checklists
+   - Update task status
+   - Track completion progress
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Contributing
 
-## How can I deploy this project?
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-Simply open [Lovable](https://lovable.dev/projects/04066a65-409a-4729-abaa-f30f79508a30) and click on Share -> Publish.
+## License
 
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+This project is licensed under the MIT License - see the LICENSE file for details

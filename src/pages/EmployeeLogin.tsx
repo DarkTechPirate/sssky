@@ -48,8 +48,13 @@ const EmployeeLogin = () => {
       // Get employee data
       const employee = await apiService.getEmployeeByEmail(formData.email);
       
-      if (!employee || employee.companyId !== formData.companyId) {
-        throw new Error("Invalid company selection.");
+      if (!employee) {
+        throw new Error("Employee account not found.");
+      }
+
+      // Verify company ID only if provided
+      if (formData.companyId && employee.companyId !== formData.companyId) {
+        throw new Error("Invalid company selection for this employee.");
       }
 
       // Get user claims to verify role
@@ -57,6 +62,16 @@ const EmployeeLogin = () => {
       if (idTokenResult.claims.role !== 'employee') {
         throw new Error("This account is not authorized as an employee.");
       }
+
+      // Store employee data in localStorage
+      localStorage.setItem('employeeData', JSON.stringify({
+        uid: employee.uid,
+        name: employee.name,
+        email: employee.email,
+        employeeId: employee.employeeId,
+        companyId: employee.companyId,
+        role: employee.role
+      }));
 
       toast({
         title: "Login Successful!",

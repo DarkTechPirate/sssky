@@ -49,13 +49,15 @@ const AdminDashboard = () => {
   const [selectedCompany, setSelectedCompany] = useState("all");
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [showManageEmployees, setShowManageEmployees] = useState(false);
+  const [isAddingEmployee, setIsAddingEmployee] = useState(false);
   const [newEmployee, setNewEmployee] = useState<Partial<Employee>>({
     name: "",
     employeeId: "",
     companyId: "",
     email: "",
-    password: "" // Add password field to initial state
+    password: ""
   });
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -87,11 +89,11 @@ const AdminDashboard = () => {
   };
 
   const handleAddEmployee = async () => {
-    if (!newEmployee.name || !newEmployee.companyId || !newEmployee.email || !newEmployee.password) {
+    if (!newEmployee.name || !newEmployee.companyId || !newEmployee.email || !newEmployee.password || !newEmployee.employeeId) {
       toast({
         variant: "destructive",
         title: "Missing Information",
-        description: "Please fill in all fields."
+        description: "Please fill in all fields including Employee ID."
       });
       return;
     }
@@ -104,6 +106,8 @@ const AdminDashboard = () => {
       });
       return;
     }
+
+    setIsAddingEmployee(true);
 
     try {
       // Create Firebase auth user
@@ -125,20 +129,34 @@ const AdminDashboard = () => {
         }),
       });
 
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        console.error('Failed to parse response:', e);
+        throw new Error('Invalid server response');
+      }
+
       if (!response.ok) {
-        throw new Error('Failed to set user role');
+        // If setting claims fails, delete the created user
+        await userCredential.user.delete();
+        throw new Error(errorData.error || 'Failed to set user role');
       }
 
       // Add employee to Firestore
       const employeeData = {
         name: newEmployee.name,
         email: newEmployee.email,
+        employeeId: newEmployee.employeeId,
         companyId: newEmployee.companyId,
         uid: userCredential.user.uid,
         role: 'employee'
       };
 
-      await apiService.addEmployee(employeeData);
+      const employeeId = await apiService.addEmployee(employeeData);
+      
+      // Update local state with new employee
+      setEmployees(prev => [...prev, { ...employeeData, id: employeeId, createdAt: new Date() }]);
       
       toast({
         title: "Employee Added",
@@ -151,6 +169,7 @@ const AdminDashboard = () => {
         description: `
           Email: ${newEmployee.email}
           Password: ${newEmployee.password}
+          Employee ID: ${newEmployee.employeeId}
           Please share these credentials securely with the employee.
         `,
         duration: 10000,
@@ -159,6 +178,7 @@ const AdminDashboard = () => {
       // Reset form
       setNewEmployee({
         name: "",
+        employeeId: "",
         companyId: "",
         email: "",
         password: ""
@@ -170,6 +190,8 @@ const AdminDashboard = () => {
         title: "Error",
         description: error.message || "Failed to add employee. Please try again."
       });
+    } finally {
+      setIsAddingEmployee(false);
     }
   };
 
@@ -247,9 +269,9 @@ const AdminDashboard = () => {
                   </SelectContent>
                 </Select>
               </div>
-              <Dialog>
+              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="outline" className="flex items-center gap-2">
+                  <Button variant="outline" className="flex items-center gap-2" onClick={() => setIsDialogOpen(true)}>
                     <Users className="h-4 w-4" />
                     Manage Employees
                   </Button>
@@ -352,20 +374,17 @@ const AdminDashboard = () => {
                     </div>
                     <Button 
                       className="mt-4 w-full"
-                      onClick={() => {
-                        if (!newEmployee.password || newEmployee.password.length < 8) {
-                          toast({
-                            variant: "destructive",
-                            title: "Invalid Password",
-                            description: "Password must be at least 8 characters long."
-                          });
-                          return;
-                        }
-                        handleAddEmployee();
-                      }}
+                      onClick={handleAddEmployee}
+                      disabled={isAddingEmployee}
                     >
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      Add Employee
+                      {isAddingEmployee ? (
+                        <>Loading...</>
+                      ) : (
+                        <>
+                          <UserPlus className="h-4 w-4 mr-2" />
+                          Add Employee
+                        </>
+                      )}
                     </Button>
                   </div>
 
@@ -375,32 +394,34 @@ const AdminDashboard = () => {
                     {employees.length === 0 ? (
                       <p className="text-gray-500 text-center py-4">No employees added yet</p>
                     ) : (
-                      employees.map((employee) => (
-                        <div
-                          key={employee.id}
-                          className="flex items-center justify-between p-4 border rounded-lg"
-                        >
-                          <div className="flex items-center gap-3">
-                            <User className="h-5 w-5 text-gray-500" />
-                            <div>
-                              <p className="font-medium">{employee.name}</p>
-                              <p className="text-sm text-gray-500">
-                                ID: {employee.employeeId} | 
-                                Company: {COMPANIES.find(c => c.id === employee.companyId)?.name} |
-                                Email: {employee.email}
-                              </p>
-                            </div>
-                          </div>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => handleDeleteEmployee(employee.id)}
+                      <div className="space-y-2">
+                        {employees.map((employee) => (
+                          <div
+                            key={employee.id}
+                            className="flex items-center justify-between p-4 border rounded-lg"
                           >
-                            <UserX className="h-4 w-4 mr-2" />
-                            Remove
-                          </Button>
-                        </div>
-                      ))
+                            <div className="flex items-center gap-3">
+                              <User className="h-5 w-5 text-gray-500" />
+                              <div>
+                                <p className="font-medium">{employee.name}</p>
+                                <p className="text-sm text-gray-500">
+                                  ID: {employee.employeeId} | 
+                                  Company: {COMPANIES.find(c => c.id === employee.companyId)?.name} |
+                                  Email: {employee.email}
+                                </p>
+                              </div>
+                            </div>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleDeleteEmployee(employee.id)}
+                            >
+                              <UserX className="h-4 w-4 mr-2" />
+                              Remove
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 </DialogContent>
