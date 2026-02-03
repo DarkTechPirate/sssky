@@ -83,7 +83,7 @@ const port = process.env.PORT || 3001;
         await seedAdmin();
 
         // Mount API routes
-        app.use("/api", require("./routes/index"));
+        app.use("/", require("./routes/index"));
 
         // Start server
         httpServer.listen(port, "0.0.0.0", () => {
