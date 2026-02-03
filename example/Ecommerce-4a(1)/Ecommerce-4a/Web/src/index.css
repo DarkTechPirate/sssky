@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+/* --- 1. Hide Scrollbars --- */
+/* For Chrome, Safari, Edge */
+::-webkit-scrollbar {
+  display: none;
+}
+
+/* For Firefox, IE, Edge Legacy */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+/* --- 2. Global Smooth Color Transitions --- */
+/* Target every element, including before/after pseudo-elements */
+*, *::before, *::after {
+  /* We list specific color properties to avoid animating layout (width/height) which causes lag */
+  transition-property: background-color, color, border-color, fill, stroke, outline-color, text-decoration-color, box-shadow;
+  transition-duration: 0.3s;
+  transition-timing-function: ease;
+}
+
+/* --- 3. Base Settings --- */
+html,
+body {
+  /* Smooth scrolling for anchor links */
+  scroll-behavior: smooth;
+  /* Ensure the base page background transitions smoothly */
+  transition: background-color 0.3s ease, color 0.3s ease; 
+}

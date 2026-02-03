@@ -6,12 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { auth } from "@/firebase";
-import { signInWithEmailAndPassword } from "firebase/auth";
-
-// Fixed admin credentials
-const ADMIN_USERNAME = "admin01";
-const ADMIN_PASSWORD = "ADMIN123";
+import { apiService } from "@/services/api";
 
 const AdminLogin = () => {
   const [formData, setFormData] = useState({
@@ -32,55 +27,41 @@ const AdminLogin = () => {
         throw new Error("Please fill in all fields to continue.");
       }
 
-      // Check fixed credentials
-      if (formData.username !== ADMIN_USERNAME || formData.password !== ADMIN_PASSWORD) {
+      // Call API to authenticate
+      const response = await apiService.adminLogin(formData.username, formData.password);
+
+      if (!response.success) {
         throw new Error("Invalid admin credentials.");
       }
 
-      // Sign in with Firebase using email (username + domain)
-      const adminEmail = `${ADMIN_USERNAME}@checklist-central.com`;
-      const userCredential = await signInWithEmailAndPassword(
-        auth,
-        adminEmail,
-        ADMIN_PASSWORD
-      );
-
-      // Force token refresh to get latest claims
-      await userCredential.user.getIdToken(true);
-      
-      // Get user claims to verify admin role
-      const idTokenResult = await userCredential.user.getIdTokenResult();
-      if (idTokenResult.claims.role !== 'admin') {
-        await auth.signOut();
-        throw new Error("This account is not authorized as an admin.");
-      }
-
-      // Store admin data in localStorage
+      // Store admin data and token in localStorage
       localStorage.setItem('adminData', JSON.stringify({
-        uid: userCredential.user.uid,
-        username: ADMIN_USERNAME,
-        role: 'admin'
+        id: response.admin.id,
+        username: response.admin.username,
+        name: response.admin.name,
+        role: response.admin.role
       }));
+      localStorage.setItem('authToken', response.token);
 
       toast({
         title: "Admin Login Successful!",
         description: "Welcome! Accessing admin dashboard..."
       });
       
-      // Navigate after a short delay to ensure claims are propagated
+      // Navigate to dashboard
       setTimeout(() => {
         navigate('/admin-dashboard');
-      }, 1500);
-    } catch (error) {
+      }, 500);
+    } catch (error: any) {
       console.error('Login error:', error);
       // Clear any existing auth state on error
-      await auth.signOut();
       localStorage.removeItem('adminData');
+      localStorage.removeItem('authToken');
       
       toast({
         variant: "destructive",
         title: "Login Failed",
-        description: error.message || "Invalid admin credentials."
+        description: error.response?.data?.error || error.message || "Invalid admin credentials."
       });
     } finally {
       setIsLoading(false);

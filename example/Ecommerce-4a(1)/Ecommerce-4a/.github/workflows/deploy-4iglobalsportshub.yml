@@ -1,0 +1,25 @@
+name: deploy:4iglobalsportshub
+
+on:
+  push:
+    branches:
+      - 4a
+
+jobs:
+  deploy:
+    name: deploy-to-vps
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy 4iglobalsportshub app
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ops
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/apps/Ecommerce
+            git pull origin 4a
+            docker compose build
+            docker compose up -d

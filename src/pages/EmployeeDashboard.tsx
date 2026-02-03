@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
+import { apiService } from "@/services/api";
 import checklistData from '../../Checklist-new.json';
 
 interface Task {
@@ -90,31 +91,56 @@ const EmployeeDashboard = () => {
     });
   };
 
-  const handleSubmitProgress = () => {
+  const handleSubmitProgress = async () => {
     const completedTasks = tasks.filter(t => t.completed).length;
     const totalTasks = tasks.length;
     
-    // Store submission data
-    const submissionData = {
-      employeeData,
-      tasks,
-      submittedAt: new Date().toISOString(),
-      completionRate: (completedTasks / totalTasks) * 100
-    };
-    
-    // Add to existing submissions or create new array
-    const existingSubmissions = JSON.parse(localStorage.getItem('taskSubmissions') || '[]');
-    existingSubmissions.push(submissionData);
-    localStorage.setItem('taskSubmissions', JSON.stringify(existingSubmissions));
-    
-    toast({
-      title: "Progress Submitted!",
-      description: `${completedTasks} out of ${totalTasks} tasks completed. Great work!`
-    });
+    try {
+      // Submit to backend API
+      const submissionData = {
+        employeeId: employeeData.employeeId,
+        employeeData: {
+          name: employeeData.name,
+          email: employeeData.email,
+          employeeId: employeeData.employeeId,
+          companyId: employeeData.companyId
+        },
+        tasks: tasks.map(t => ({
+          id: t.id,
+          title: t.title,
+          completed: t.completed,
+          completedAt: t.completed ? new Date() : undefined
+        }))
+      };
+      
+      await apiService.addSubmission(submissionData);
+      
+      // Also store locally
+      const existingSubmissions = JSON.parse(localStorage.getItem('taskSubmissions') || '[]');
+      existingSubmissions.push({
+        ...submissionData,
+        submittedAt: new Date().toISOString(),
+        completionRate: (completedTasks / totalTasks) * 100
+      });
+      localStorage.setItem('taskSubmissions', JSON.stringify(existingSubmissions));
+      
+      toast({
+        title: "Progress Submitted!",
+        description: `${completedTasks} out of ${totalTasks} tasks completed. Great work!`
+      });
+    } catch (error) {
+      console.error('Failed to submit progress:', error);
+      toast({
+        variant: "destructive",
+        title: "Submission Failed",
+        description: "Failed to submit progress. Please try again."
+      });
+    }
   };
 
   const handleLogout = () => {
     localStorage.removeItem('employeeData');
+    localStorage.removeItem('authToken');
     toast({
       title: "Logged Out",
       description: "You have been successfully logged out."
@@ -141,7 +167,7 @@ const EmployeeDashboard = () => {
               </div>
               <div>
                 <h1 className="text-xl font-semibold">Employee Dashboard</h1>
-                <p className="text-sm text-gray-600">{employeeData.company}</p>
+                <p className="text-sm text-gray-600">{employeeData.companyId}</p>
               </div>
             </div>
             <Button 
@@ -168,9 +194,9 @@ const EmployeeDashboard = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                <p><strong>Name:</strong> {employeeData.username}</p>
+                <p><strong>Name:</strong> {employeeData.name}</p>
                 <p><strong>Employee ID:</strong> {employeeData.employeeId}</p>
-                <p><strong>Company:</strong> {employeeData.company}</p>
+                <p><strong>Company:</strong> {employeeData.companyId}</p>
               </div>
             </CardContent>
           </Card>

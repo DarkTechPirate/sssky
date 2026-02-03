@@ -3,9 +3,7 @@ import { Toaster as Sonner } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { onAuthStateChanged } from "firebase/auth";
 import { useEffect, useState } from "react";
-import { auth } from "./firebase";
 import Index from "./pages/Index";
 import EmployeeLogin from "./pages/EmployeeLogin";
 import AdminLogin from "./pages/AdminLogin";
@@ -15,41 +13,32 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-// Protected Route Component
-const ProtectedRoute = ({ children, requiredRole }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [userRole, setUserRole] = useState(null);
+// Protected Route Component - Simple localStorage-based auth
+const ProtectedRoute = ({ children, requiredRole }: { children: React.ReactNode; requiredRole: 'admin' | 'employee' }) => {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        try {
-          // Force refresh token to get latest claims
-          await currentUser.getIdToken(true);
-          const idTokenResult = await currentUser.getIdTokenResult();
-          setUserRole(idTokenResult.claims.role);
-        } catch (error) {
-          console.error("Error getting user claims:", error);
-          setUserRole(null);
-          // Clear invalid session
-          localStorage.removeItem('adminData');
-          localStorage.removeItem('employeeData');
+    // Check localStorage for auth data
+    const storageKey = requiredRole === 'admin' ? 'adminData' : 'employeeData';
+    const userData = localStorage.getItem(storageKey);
+    const token = localStorage.getItem('authToken');
+    
+    if (userData && token) {
+      try {
+        const parsed = JSON.parse(userData);
+        if (parsed.role === requiredRole) {
+          setIsAuthenticated(true);
+          return;
         }
-      } else {
-        setUserRole(null);
-        // Clear session data when user is not authenticated
-        localStorage.removeItem('adminData');
-        localStorage.removeItem('employeeData');
+      } catch (error) {
+        console.error('Error parsing user data:', error);
       }
-      setLoading(false);
-    });
+    }
+    
+    setIsAuthenticated(false);
+  }, [requiredRole]);
 
-    return () => unsubscribe();
-  }, []);
-
-  if (loading) {
+  if (isAuthenticated === null) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -60,11 +49,11 @@ const ProtectedRoute = ({ children, requiredRole }) => {
     );
   }
 
-  if (!user || userRole !== requiredRole) {
+  if (!isAuthenticated) {
     return <Navigate to="/" replace />;
   }
 
-  return children;
+  return <>{children}</>;
 };
 
 const App = () => (

@@ -7,11 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/firebase";
 import { apiService } from "@/services/api";
 
-// Import company data from AdminDashboard
+// Company data
 const COMPANIES = [
   { id: "company1", name: "Company 1" },
   { id: "company2", name: "Company 2" },
@@ -38,55 +36,45 @@ const EmployeeLogin = () => {
         throw new Error("Please fill in all fields to continue.");
       }
 
-      // Sign in with Firebase
-      const userCredential = await signInWithEmailAndPassword(
-        auth,
+      // Call API to authenticate
+      const response = await apiService.employeeLogin(
         formData.email,
-        formData.password
+        formData.password,
+        formData.companyId
       );
 
-      // Get employee data
-      const employee = await apiService.getEmployeeByEmail(formData.email);
-      
-      if (!employee) {
-        throw new Error("Employee account not found.");
+      if (!response.success) {
+        throw new Error("Invalid credentials.");
       }
 
-      // Verify company ID only if provided
-      if (formData.companyId && employee.companyId !== formData.companyId) {
-        throw new Error("Invalid company selection for this employee.");
-      }
-
-      // Get user claims to verify role
-      const idTokenResult = await userCredential.user.getIdTokenResult();
-      if (idTokenResult.claims.role !== 'employee') {
-        throw new Error("This account is not authorized as an employee.");
-      }
-
-      // Store employee data in localStorage
+      // Store employee data and token in localStorage
       localStorage.setItem('employeeData', JSON.stringify({
-        uid: employee.uid,
-        name: employee.name,
-        email: employee.email,
-        employeeId: employee.employeeId,
-        companyId: employee.companyId,
-        role: employee.role
+        id: response.employee.id,
+        name: response.employee.name,
+        email: response.employee.email,
+        employeeId: response.employee.employeeId,
+        companyId: response.employee.companyId,
+        role: response.employee.role
       }));
+      localStorage.setItem('authToken', response.token);
 
       toast({
         title: "Login Successful!",
-        description: `Welcome ${employee.name}! Redirecting to your dashboard...`
+        description: `Welcome ${response.employee.name}! Redirecting to your dashboard...`
       });
       
       setTimeout(() => {
         navigate('/employee-dashboard');
-      }, 1000);
-    } catch (error) {
+      }, 500);
+    } catch (error: any) {
       console.error('Login error:', error);
+      localStorage.removeItem('employeeData');
+      localStorage.removeItem('authToken');
+      
       toast({
         variant: "destructive",
         title: "Login Failed",
-        description: error.message || "Please check your credentials and try again."
+        description: error.response?.data?.error || error.message || "Please check your credentials and try again."
       });
     } finally {
       setIsLoading(false);

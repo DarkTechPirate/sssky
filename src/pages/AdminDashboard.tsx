@@ -23,8 +23,6 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { auth } from "@/firebase";
-import { createUserWithEmailAndPassword } from "firebase/auth";
 
 // Define available companies
 const COMPANIES = [
@@ -40,12 +38,31 @@ interface Employee {
   employeeId: string;
   companyId: string;
   email: string;
-  password: string; // Add password field
+  password?: string; // Optional - only used for adding new employees
+  createdAt?: Date;
+}
+
+interface Submission {
+  id: string;
+  employeeId: string;
+  employeeData: {
+    name: string;
+    email: string;
+    employeeId: string;
+    companyId: string;
+  };
+  tasks: Array<{
+    id: string;
+    title: string;
+    completed: boolean;
+    completedAt?: Date;
+  }>;
+  submittedAt: Date;
 }
 
 const AdminDashboard = () => {
   const [adminData, setAdminData] = useState<any>(null);
-  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [selectedCompany, setSelectedCompany] = useState("all");
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [showManageEmployees, setShowManageEmployees] = useState(false);
@@ -69,18 +86,25 @@ const AdminDashboard = () => {
     }
     setAdminData(JSON.parse(stored));
 
-    // Real-time Firestore listener
-    const unsubscribe = apiService.onEmployeesChange((updatedEmployees) => {
-      setEmployees(updatedEmployees);
+    // Polling-based listener for employees
+    const unsubscribeEmployees = apiService.onEmployeesChange((updatedEmployees) => {
+      setEmployees(updatedEmployees as Employee[]);
+    });
+
+    // Polling-based listener for submissions
+    const unsubscribeSubmissions = apiService.onSubmissionsChange((updatedSubmissions) => {
+      setSubmissions(updatedSubmissions as Submission[]);
     });
 
     return () => {
-      unsubscribe();
+      unsubscribeEmployees();
+      unsubscribeSubmissions();
     };
   }, [navigate]);
 
   const handleLogout = () => {
     localStorage.removeItem('adminData');
+    localStorage.removeItem('authToken');
     toast({
       title: "Logged Out",
       description: "Admin session ended successfully."
@@ -110,53 +134,14 @@ const AdminDashboard = () => {
     setIsAddingEmployee(true);
 
     try {
-      // Create Firebase auth user
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        newEmployee.email,
-        newEmployee.password
-      );
-
-      // Set custom claims using Vercel endpoint
-      const response = await fetch('/api/setCustomClaims', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          uid: userCredential.user.uid,
-          role: 'employee'
-        }),
-      });
-
-      let errorData;
-      try {
-        errorData = await response.json();
-      } catch (e) {
-        console.error('Failed to parse response:', e);
-        throw new Error('Invalid server response');
-      }
-
-      if (!response.ok) {
-        // If setting claims fails, delete the created user
-        await userCredential.user.delete();
-        throw new Error(errorData.error || 'Failed to set user role');
-      }
-
-      // Add employee to Firestore
-      const employeeData = {
-        name: newEmployee.name,
+      // Use the API service to create employee
+      await apiService.addEmployee({
         email: newEmployee.email,
+        password: newEmployee.password,
+        name: newEmployee.name,
         employeeId: newEmployee.employeeId,
-        companyId: newEmployee.companyId,
-        uid: userCredential.user.uid,
-        role: 'employee'
-      };
-
-      const employeeId = await apiService.addEmployee(employeeData);
-      
-      // Update local state with new employee
-      setEmployees(prev => [...prev, { ...employeeData, id: employeeId, createdAt: new Date() }]);
+        companyId: newEmployee.companyId
+      });
       
       toast({
         title: "Employee Added",
@@ -183,12 +168,12 @@ const AdminDashboard = () => {
         email: "",
         password: ""
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to add employee:', error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: error.message || "Failed to add employee. Please try again."
+        description: error.response?.data?.error || error.message || "Failed to add employee. Please try again."
       });
     } finally {
       setIsAddingEmployee(false);
@@ -218,8 +203,13 @@ const AdminDashboard = () => {
     ? submissions 
     : submissions.filter(sub => sub.employeeData.companyId === selectedCompany);
 
+  // Filter employees based on selected company
+  const filteredEmployees = selectedCompany === "all"
+    ? employees
+    : employees.filter(emp => emp.companyId === selectedCompany);
+
   const getEmployeeStats = () => {
-    const totalEmployees = filteredSubmissions.length;
+    const totalEmployees = filteredEmployees.length;
     const totalTasks = filteredSubmissions.reduce((acc, sub) => acc + sub.tasks.length, 0);
     const completedTasks = filteredSubmissions.reduce((acc, sub) => 
       acc + sub.tasks.filter((task: any) => task.completed).length, 0
@@ -498,7 +488,7 @@ const AdminDashboard = () => {
         </div>
 
         {/* Employee Progress Table */}
-        <Card>
+        <Card className="mb-8">
           <CardHeader>
             <CardTitle className="text-2xl">Employee Task Progress</CardTitle>
             <CardDescription>
@@ -522,13 +512,13 @@ const AdminDashboard = () => {
                 {filteredSubmissions.map((submission, index) => {
                   const completedTasks = submission.tasks.filter((task: any) => task.completed).length;
                   const totalTasks = submission.tasks.length;
-                  const completionRate = (completedTasks / totalTasks) * 100;
+                  const completionRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
                   return (
                     <div key={index} className="border rounded-lg p-6 bg-white hover:shadow-md transition-shadow">
                       <div className="flex justify-between items-start mb-4">
                         <div>
-                          <h4 className="text-lg font-semibold">{submission.employeeData.username}</h4>
+                          <h4 className="text-lg font-semibold">{submission.employeeData.name}</h4>
                           <p className="text-sm text-gray-600">
                             ID: {submission.employeeData.employeeId} | 
                             Company: {COMPANIES.find(c => c.id === submission.employeeData.companyId)?.name} |
@@ -580,6 +570,84 @@ const AdminDashboard = () => {
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Employee List Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-2xl flex items-center gap-2">
+              <Users className="h-6 w-6 text-blue-600" />
+              Registered Employees
+            </CardTitle>
+            <CardDescription>
+              All registered employees in the system
+              {selectedCompany !== "all" && ` for ${COMPANIES.find(c => c.id === selectedCompany)?.name}`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {filteredEmployees.length === 0 ? (
+              <div className="text-center py-12">
+                <Users className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-600 mb-2">
+                  No Employees Found
+                </h3>
+                <p className="text-gray-500">
+                  Click "Manage Employees" to add new employees to the system.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b bg-gray-50">
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Name</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Employee ID</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Email</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Company</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredEmployees.map((employee) => {
+                      const employeeSubmission = submissions.find(
+                        s => s.employeeData.employeeId === employee.employeeId
+                      );
+                      return (
+                        <tr key={employee.id} className="border-b hover:bg-gray-50 transition-colors">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-2">
+                              <div className="bg-blue-100 p-1.5 rounded-full">
+                                <User className="h-4 w-4 text-blue-600" />
+                              </div>
+                              <span className="font-medium">{employee.name}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-gray-600">{employee.employeeId}</td>
+                          <td className="py-3 px-4 text-gray-600">{employee.email}</td>
+                          <td className="py-3 px-4">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                              {COMPANIES.find(c => c.id === employee.companyId)?.name || employee.companyId}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4">
+                            {employeeSubmission ? (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                Active
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                Pending
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </CardContent>
