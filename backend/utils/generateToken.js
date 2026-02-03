@@ -6,12 +6,13 @@ const generateTokenAndSetCookie = (res, userId) => {
         expiresIn: "7d",
     });
 
-    // 2. Cookie Options
+    // 2. Cookie Options - MUST use sameSite: 'none' for cross-domain
+    const isProduction = process.env.NODE_ENV === "production";
     const options = {
         expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
         httpOnly: true, // Security: JS cannot read this
-        secure: process.env.NODE_ENV === "production", // HTTPS only in prod
-        sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax", // CSRF protection
+        secure: isProduction, // HTTPS only in prod (required for sameSite: 'none')
+        sameSite: isProduction ? "none" : "lax", // 'none' allows cross-domain cookies
     };
 
     // 3. Set Cookie
@@ -21,3 +22,4 @@ const generateTokenAndSetCookie = (res, userId) => {
 };
 
 module.exports = generateTokenAndSetCookie;
+
